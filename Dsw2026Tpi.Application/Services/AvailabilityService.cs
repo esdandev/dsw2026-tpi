@@ -1,13 +1,10 @@
-using System;
-using System.Linq;
 using System.Globalization;
-using System.Threading.Tasks;
 using Dsw2026Tpi.Application.Dtos;
 using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.CrossCutting.Exceptions;
+using Dsw2026Tpi.CrossCutting.Helpers;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Domain.Interfaces;
-using System.Collections.Generic;
 
 namespace Dsw2026Tpi.Application.Services;
 
@@ -162,7 +159,9 @@ public class AvailabilityService : IAvailabilityService
 
         ValidateNoOverlapsWithinRequest(parsed);
 
-        var existing = await _persistence.GetFiltered<AvailabilityRule>(r => r.DoctorId == doctorId);
+        var currentMonthStart = new DateTime(Clock.Now.Year, Clock.Now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var existing = await _persistence.GetFiltered<AvailabilityRule>(r =>
+            r.DoctorId == doctorId && r.IsActive && r.EffectiveFrom >= currentMonthStart);
         foreach (var (day, start, end) in parsed)
         {
             foreach (var er in existing ?? Enumerable.Empty<AvailabilityRule>())
@@ -188,7 +187,7 @@ public class AvailabilityService : IAvailabilityService
             {
                 Id = Guid.NewGuid(),
                 DoctorId = doctorId,
-                EffectiveFrom = DateTime.UtcNow,
+                EffectiveFrom = Clock.Now,
                 EffectiveTo = null,
                 Recurrence = RecurrenceType.WEEKLY,
                 DaysOfWeekCsv = string.Join(',', group.Select(g => g.Day)),
@@ -201,8 +200,8 @@ public class AvailabilityService : IAvailabilityService
             };
 
             await _persistence.Add(rule);
-            await GenerateSlotsForRule(rule, DateTime.UtcNow.Date,
-                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.DaysInMonth(DateTime.UtcNow.Year, DateTime.UtcNow.Month)));
+            await GenerateSlotsForRule(rule, Clock.Today,
+                new DateTime(Clock.Now.Year, Clock.Now.Month, DateTime.DaysInMonth(Clock.Now.Year, Clock.Now.Month)));
 
             createdRules.Add(rule);
         }
@@ -238,7 +237,7 @@ public class AvailabilityService : IAvailabilityService
 
         ValidateNoOverlapsWithinRequest(parsed);
 
-        var now = DateTime.UtcNow;
+        var now = Clock.Now;
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var nextMonthStart = monthStart.AddMonths(1);
 

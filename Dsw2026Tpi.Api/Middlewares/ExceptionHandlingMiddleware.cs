@@ -66,7 +66,7 @@ public class ExceptionHandlingMiddleware
             BusinessRuleException => HttpStatusCode.Conflict,
             ConflictException => HttpStatusCode.Conflict,
             AuthenticationException => HttpStatusCode.Unauthorized,
-            AuthorizationException => HttpStatusCode.Unauthorized,
+            AuthorizationException => HttpStatusCode.Forbidden,
             _ => HttpStatusCode.InternalServerError
         };
     }

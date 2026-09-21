@@ -1,13 +1,14 @@
-﻿using System.Linq.Expressions;
-using Dsw2026Tpi.Application.Dtos;
+﻿using Dsw2026Tpi.Application.Dtos;
 using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.CrossCutting.Exceptions;
+using Dsw2026Tpi.CrossCutting.Helpers;
 using Dsw2026Tpi.CrossCutting.Resources;
 using Dsw2026Tpi.Data.Identity;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Domain.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace Dsw2026Tpi.Application.Services;
 
@@ -35,7 +36,7 @@ public class AppointmentService : IAppointmentService
         if (slot is null || slot.DoctorId != request.DoctorId)
             throw new EntityNotFoundException("AvailabilitySlot");
 
-        if (slot.Start <= DateTime.UtcNow)
+        if (slot.Start <= Clock.Now)
             throw new ValidationException().WithDetail("availabilitySlotId", "no se pueden reservar turnos pasados");
 
         if (slot.Status != SlotStatus.AVAILABLE)
@@ -96,7 +97,7 @@ public class AppointmentService : IAppointmentService
     {
         var patient = await GetAuthenticatedPatient(authenticatedUserName, dni);
 
-        var appointments = await _persistence.GetFiltered<Appointment>(a => a.PatientUserId == patient.Id && a.Status == AppointmentStatus.BOOKED, nameof(Appointment.AvailabilitySlot), $"{nameof(Appointment.AvailabilitySlot)}.{nameof(AvailabilitySlot.Doctor)}");
+        var appointments = await _persistence.GetFiltered<Appointment>(a => a.PatientUserId == patient.Id && a.Status == AppointmentStatus.BOOKED && a.AvailabilitySlot!.Start >= Clock.Now, nameof(Appointment.AvailabilitySlot), $"{nameof(Appointment.AvailabilitySlot)}.{nameof(AvailabilitySlot.Doctor)}");
 
         return (appointments ?? Enumerable.Empty<Appointment>()).Select(a => new AppointmentModel.PatientResponse(
             a.Id,
@@ -108,13 +109,14 @@ public class AppointmentService : IAppointmentService
             a.AvailabilitySlot.End
         ));
     }
-    public async Task<Pagination<AppointmentModel.AdministrativeResponse>> GetByDate(DateOnly date, int pageSize, int pageIndex)
+    public async Task<Pagination<AppointmentModel.AdministrativeResponse>> GetByDate(DateOnly date, int pageSize, int pageIndex, AppointmentStatus? status = null)
     {
         var dayStart = date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = date.ToDateTime(TimeOnly.MaxValue);
 
         var (appointments, patientDnis, total, normalizedPageSize, normalizedPageIndex) = await QueryAppointments(
-            appointment => appointment.AvailabilitySlot!.Start >= dayStart && appointment.AvailabilitySlot.Start <= dayEnd,
+            appointment => appointment.AvailabilitySlot!.Start >= dayStart && appointment.AvailabilitySlot.Start <= dayEnd &&
+            (!status.HasValue || appointment.Status == status.Value),
             pageSize, pageIndex);
 
         var data = appointments.Select(appointment =>
@@ -132,7 +134,7 @@ public class AppointmentService : IAppointmentService
 
         return new Pagination<AppointmentModel.AdministrativeResponse>(normalizedPageSize, normalizedPageIndex, total, data);
     }
-    public async Task<Pagination<AppointmentModel.SearchAdministrativeResponse>> Search(Guid? specialtyId, Guid? doctorId, long? dni, DateOnly? date, int pageSize, int pageIndex)
+    public async Task<Pagination<AppointmentModel.SearchAdministrativeResponse>> Search(Guid? specialtyId, Guid? doctorId, long? dni, DateOnly? date, int pageSize, int pageIndex, AppointmentStatus? status = null)
     {
         string? patientId = null;
 
@@ -156,7 +158,8 @@ public class AppointmentService : IAppointmentService
                 (!specialtyId.HasValue || appointment.AvailabilitySlot!.Doctor!.SpecialityId == specialtyId.Value) &&
                 (!doctorId.HasValue || appointment.AvailabilitySlot!.DoctorId == doctorId.Value) &&
                 (patientId == null || appointment.PatientUserId == patientId) &&
-                (!dayStart.HasValue || (appointment.AvailabilitySlot!.Start >= dayStart.Value && appointment.AvailabilitySlot.Start <= dayEnd!.Value)),
+                (!dayStart.HasValue || (appointment.AvailabilitySlot!.Start >= dayStart.Value && appointment.AvailabilitySlot.Start <= dayEnd!.Value)) &&
+                (!status.HasValue || appointment.Status == status.Value),
             pageSize, pageIndex);
 
         var data = appointments.Select(appointment =>
