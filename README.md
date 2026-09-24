@@ -6,6 +6,7 @@
 - Escalante Daniel Alejo Baltazar - 60554
 - Lisandro Ruiz - 58399
 - Mauro Benjamín Ibarra - 60698
+- Gutierrez, Maia Federica - 60348
 
 ## Cómo ejecutar el proyecto localmente
 
