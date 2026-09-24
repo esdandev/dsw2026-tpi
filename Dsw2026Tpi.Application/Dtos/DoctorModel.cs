@@ -6,5 +6,6 @@ public record DoctorModel
     public record Response(Guid Id, string Name, string LicenseNumber, SpecialtyDto? Specialty);
     public record SpecialtyDto(Guid Id, string Name);
     public record AvailabilityResponse(Guid Id, string Day, string StartTime, string EndTime);
-    public record GetAllQuery(int PageSize, int PageIndex, string? Name);
+    public record SlotResponse(Guid Id, string Date, string StartTime, string EndTime);
+    public record GetAllQuery(int PageSize, int PageIndex, string? Name, Guid? SpecialtyId = null);
 }

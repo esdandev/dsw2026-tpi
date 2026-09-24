@@ -1,13 +1,14 @@
-﻿using Dsw2026Tpi.Application.Interfaces;
+﻿using Dsw2026Tpi.Api.Configurations;
+using Dsw2026Tpi.Application.Dtos;
+using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.CrossCutting.Exceptions;
+using Dsw2026Tpi.Domain.Entities;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Globalization;
-using Dsw2026Tpi.Application.Dtos;
-using FluentValidation;
-using ValidationException = Dsw2026Tpi.CrossCutting.Exceptions.ValidationException;
-using Dsw2026Tpi.Api.Configurations;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Globalization;
+using ValidationException = Dsw2026Tpi.CrossCutting.Exceptions.ValidationException;
 
 namespace Dsw2026Tpi.Api.Controllers;
 
@@ -30,7 +31,7 @@ public class AppointmentController : AppController
     [Authorize(Policy = Dsw2026Tpi.CrossCutting.Identity.Policies.AdminPolicy)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetByDate([FromQuery] string date, [FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0)
+    public async Task<IActionResult> GetByDate([FromQuery] string date, [FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0, [FromQuery] string? status = null)
     {
         var query = new AppointmentModel.GetByDateQuery(date, pageSize, pageIndex);
         var validation = await _getByDateValidator.ValidateAsync(query);
@@ -43,7 +44,7 @@ public class AppointmentController : AppController
                 .WithDetail( "date", "formato inválido, se requiere YYYY-MM-DD");
         }
 
-        var appointments = await _service.GetByDate(parsedDate, pageSize, pageIndex);
+        var appointments = await _service.GetByDate(parsedDate, pageSize, pageIndex, ParseStatus(status));
         return Ok(appointments);
     }
 
@@ -51,7 +52,7 @@ public class AppointmentController : AppController
     [Authorize(Policy = Dsw2026Tpi.CrossCutting.Identity.Policies.AdminPolicy)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Search([FromQuery] Guid? specialtyId, [FromQuery] Guid? doctorId, [FromQuery] long? dni, [FromQuery] string? date, [FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0)
+    public async Task<IActionResult> Search([FromQuery] Guid? specialtyId, [FromQuery] Guid? doctorId, [FromQuery] long? dni, [FromQuery] string? date, [FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0, [FromQuery] string? status = null)
     {
         var query = new AppointmentModel.SearchQuery(specialtyId, doctorId, dni, date, pageSize, pageIndex);
         var validation = await _searchValidator.ValidateAsync(query);
@@ -65,7 +66,7 @@ public class AppointmentController : AppController
             parsedDate = d;
         }
 
-        var result = await _service.Search(specialtyId, doctorId, dni, parsedDate, pageSize, pageIndex);
+        var result = await _service.Search(specialtyId, doctorId, dni, parsedDate, pageSize, pageIndex, ParseStatus(status));
         return Ok(result);
     }
 
@@ -111,6 +112,23 @@ public class AppointmentController : AppController
         await _service.Cancel(id, authenticatedUserName);
         return Ok("ok");
     }
+
+    private static AppointmentStatus? ParseStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return null;
+
+        if (int.TryParse(status, out _) ||
+            !Enum.TryParse<AppointmentStatus>(status.Trim(), true, out var parsed) ||
+            !Enum.IsDefined(parsed))
+        {
+            throw new ValidationException()
+                .WithDetail("status", "valor inválido, use BOOKED, CANCELLED, ATTENDED o NO_SHOW");
+        }
+
+        return parsed;
+    }
+
     private string GetAuthenticatedUserName()
     {
         var authenticatedUserName = User.Identity?.Name;

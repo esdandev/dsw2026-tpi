@@ -25,13 +25,13 @@ public class DoctorController : AppController
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll([FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0, [FromQuery] string? name = null)
+    public async Task<IActionResult> GetAll([FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0, [FromQuery] string? name = null, [FromQuery] Guid? specialtyId = null)
     {
-        var query = new DoctorModel.GetAllQuery(pageSize, pageIndex, name);
+        var query = new DoctorModel.GetAllQuery(pageSize, pageIndex, name, specialtyId);
         var validation = await _getAllValidator.ValidateAsync(query);
         Invalidez(validation);
 
-        var doctors = await _service.GetAll(pageSize, pageIndex, name);
+        var doctors = await _service.GetAll(pageSize, pageIndex, name, specialtyId);
         return Ok(doctors);
     }
 
@@ -42,6 +42,33 @@ public class DoctorController : AppController
     {
         var availabilities = await _service.GetAvailabilities(id);
         return Ok(availabilities);
+    }
+
+    [HttpGet("{id:guid}/slots")]
+    [ProducesResponseType(typeof(IEnumerable<DoctorModel.SlotResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSlots(Guid id, [FromQuery(Name = "from")] DateOnly? fromDate, [FromQuery(Name = "to")] DateOnly? toDate)
+    {
+        var errors = new ValidationException();
+
+        if (fromDate is null)
+            errors.WithDetail("from", "es obligatorio (YYYY-MM-DD)");
+        if (toDate is null)
+            errors.WithDetail("to", "es obligatorio (YYYY-MM-DD)");
+        if (fromDate is not null && toDate is not null)
+        {
+            if (toDate < fromDate)
+                errors.WithDetail("to", "no puede ser anterior a from");
+            else if (toDate.Value.DayNumber - fromDate.Value.DayNumber > 31)
+                errors.WithDetail("to", "el rango máximo es de 31 días");
+        }
+
+        if (errors.Error.Details.Count > 0)
+            throw errors;
+
+        var slots = await _service.GetSlots(id, fromDate!.Value, toDate!.Value);
+        return Ok(slots);
     }
 
     [HttpPost]
